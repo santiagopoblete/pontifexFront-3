@@ -38,7 +38,7 @@ function fromMaster(m: MasterDataset) {
     // utilidadNeta + depreciación (si la hay) como aproximación rápida.
     flujoEfectivo: m.utilidadNeta + (m.depreciacion || 0),
     cxcPromedio: m.cuentasPorCobrar || 48500,
-    ventasCredito: m.ventas * 0.75,
+    ventasCredito: m.ventas * 0.5,
     inventarioPromedio: m.inventarios || 58000,
     antiguedadAnios: estimateAntiguedadAnios(m),
   };

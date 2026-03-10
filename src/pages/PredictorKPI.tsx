@@ -70,7 +70,7 @@ export default function PredictorKPI() {
             <Tabs defaultValue="forecast" className="animate-fade-in-up animation-delay-300">
               <TabsList className="mb-6">
                 <TabsTrigger value="forecast" className="cursor-pointer">
-                  General Forecast
+                  Pronóstico General
                 </TabsTrigger>
                 <TabsTrigger value="industry" className="cursor-pointer">
                   Industria

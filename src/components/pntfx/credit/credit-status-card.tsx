@@ -63,7 +63,6 @@ export function CreditStatusCard({ rating, score, label }: CreditStatusCardProps
               Resultado del Diagnóstico
             </p>
             <h2 className={`text-2xl font-bold ${c.text}`}>{label}</h2>
-
           </div>
 
           {/* Score */}
