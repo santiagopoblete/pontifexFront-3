@@ -18,7 +18,6 @@ const FALLBACK_DATA = {
   cxcPromedio: 48500,
   ventasCredito: 220125,
   inventarioPromedio: 58000,
-  antiguedadAnios: 3,
 };
 
 function fromMaster(m: MasterDataset) {
@@ -42,21 +41,7 @@ function fromMaster(m: MasterDataset) {
     cxcPromedio: m.cuentasPorCobrar || 48500,
     ventasCredito: m.ventas * 0.5,
     inventarioPromedio: m.inventarios || 58000,
-    antiguedadAnios: estimateAntiguedadAnios(m),
   };
-}
-
-function estimateAntiguedadAnios(m: MasterDataset): number {
-  const periodo = m.periodo || "";
-  const match = periodo.match(/(\d{4}).*?(\d{4})/);
-  if (match) {
-    const y1 = Number(match[1]);
-    const y2 = Number(match[2]);
-    if (Number.isFinite(y1) && Number.isFinite(y2) && y2 >= y1) {
-      return Math.max(1, y2 - y1 + 1);
-    }
-  }
-  return 0;
 }
 
 function computeMetrics(d: typeof FALLBACK_DATA) {
@@ -82,17 +67,9 @@ function computeMetrics(d: typeof FALLBACK_DATA) {
     efficiency: [
       { key: "rotInv", label: "Rot. Inventarios", value: d.costoDeVentas / d.inventarioPromedio, fmt: "x" as const, tooltip: "Costo de Ventas / Inventario Promedio" },
       { key: "rotCxC", label: "Rot. CxC", value: d.ventasCredito / d.cxcPromedio, fmt: "x" as const, tooltip: "Ventas a Crédito / CxC Promedio" },
-      {
-        key: "antiguedad",
-        label: "Antigüedad (años)",
-        value: d.antiguedadAnios,
-        fmt: "x" as const,
-        tooltip: "Años estimados de operación de la empresa según el periodo del MASTER",
-      },
     ],
     leverage: [
       { key: "debtRatio", label: "Razón de Deuda", value: d.pasivoTotal / d.activosTotales, fmt: "pct" as const, tooltip: "Pasivo Total / Activo Total" },
-      { key: "debtEquity", label: "Deuda / Capital", value: d.pasivoTotal / d.capitalContable, fmt: "x" as const, tooltip: "Pasivo Total / Capital Contable" },
     ],
   };
 }
@@ -149,22 +126,10 @@ function computeScore(
   else if (dr < 0.7) { score += 6; breakdown.apalancamiento += 6; }
   else { score += 2; breakdown.apalancamiento += 2; }
 
-  // Deuda / Capital (debtEquity): apalancamiento adicional
-  const debtEquity = metrics.leverage[1]?.value ?? 0;
-  if (debtEquity < 0.8) { score += 6; breakdown.apalancamiento += 6; }
-  else if (debtEquity < 1.5) { score += 4; breakdown.apalancamiento += 4; }
-  else if (debtEquity < 2.5) { score += 2; breakdown.apalancamiento += 2; }
-
   const rotInv = metrics.efficiency[0].value;
   if (rotInv > 4) { score += 15; breakdown.eficiencia += 15; }
   else if (rotInv > 2) { score += 10; breakdown.eficiencia += 10; }
   else { score += 4; breakdown.eficiencia += 4; }
-
-  const antiguedadMetric = metrics.efficiency.find((m) => m.key === "antiguedad");
-  const antiguedad = antiguedadMetric?.value ?? 0;
-  if (antiguedad >= 5) { score += 8; breakdown.eficiencia += 8; }
-  else if (antiguedad >= 2) { score += 5; breakdown.eficiencia += 5; }
-  else if (antiguedad > 0) { score += 2; breakdown.eficiencia += 2; }
 
   let rating: Rating;
   let label: string;
@@ -312,12 +277,12 @@ export function useCreditAnalysis() {
       {
         name: "Eficiencia",
         score: Math.round(breakdown.eficiencia),
-        max: 23, // 15 (Rot. Inv) + 8 (Antigüedad)
+        max: 15,
       },
       {
         name: "Apalancamiento",
         score: Math.round(breakdown.apalancamiento),
-        max: 20,
+        max: 16,
       },
       {
         name: "ROE",
