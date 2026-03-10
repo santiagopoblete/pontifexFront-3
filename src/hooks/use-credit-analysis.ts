@@ -34,9 +34,11 @@ function fromMaster(m: MasterDataset) {
     pasivoTotal: m.pasivoTotal,
     pasivoCirculante: m.pasivoCirculante,
     capitalContable: m.capitalContable,
-    // Simple proxy de flujo de efectivo operativo:
-    // utilidadNeta + depreciación (si la hay) como aproximación rápida.
-    flujoEfectivo: m.utilidadNeta + (m.depreciacion || 0),
+    // Flujo de efectivo: utilidad antes de impuestos + depreciación − CxC (prom.) + CxP (prom.)
+    flujoEfectivo:
+      (m.utilidadNeta + (m.impuestos || 0)) +
+      (m.cuentasPorCobrar || 0) -
+      (m.cuentasPorPagar || 0),
     cxcPromedio: m.cuentasPorCobrar || 48500,
     ventasCredito: m.ventas * 0.5,
     inventarioPromedio: m.inventarios || 58000,
@@ -74,7 +76,7 @@ function computeMetrics(d: typeof FALLBACK_DATA) {
         label: "Flujo de Efectivo",
         value: d.flujoEfectivo / d.ventas,
         fmt: "pct" as const,
-        tooltip: "Flujo de efectivo operativo aproximado / Ventas",
+        tooltip: "Utilidad antes de impuestos + Depreciación − CxC (prom.) + CxP (prom.), sobre Ventas",
       },
     ],
     efficiency: [
