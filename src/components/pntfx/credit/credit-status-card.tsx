@@ -2,13 +2,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ShieldCheck, ShieldAlert, ShieldX, AlertTriangle } from "lucide-react";
 
 interface CreditStatusCardProps {
-  rating: "A" | "B" | "C" | "R";
+  rating: "RIESGO_BAJO" | "RIESGO_MEDIO" | "RIESGO_ALTO";
   score: number;
   label: string;
 }
 
 const config = {
-  A: {
+  RIESGO_BAJO: {
     icon: ShieldCheck,
     gradient: "from-emerald-500/20 via-emerald-500/10 to-transparent",
     border: "border-emerald-500/30",
@@ -17,7 +17,7 @@ const config = {
     glow: "shadow-[0_0_30px_-5px_hsl(160,60%,40%/0.2)]",
     barColor: "bg-emerald-500",
   },
-  B: {
+  RIESGO_MEDIO: {
     icon: ShieldAlert,
     gradient: "from-amber-500/20 via-amber-500/10 to-transparent",
     border: "border-amber-500/30",
@@ -26,7 +26,7 @@ const config = {
     glow: "shadow-[0_0_30px_-5px_hsl(45,80%,50%/0.2)]",
     barColor: "bg-amber-500",
   },
-  C: {
+  RIESGO_ALTO: {
     icon: AlertTriangle,
     gradient: "from-orange-500/20 via-orange-500/10 to-transparent",
     border: "border-orange-500/30",
@@ -35,22 +35,12 @@ const config = {
     glow: "shadow-[0_0_30px_-5px_hsl(25,80%,50%/0.2)]",
     barColor: "bg-orange-500",
   },
-  R: {
-    icon: ShieldX,
-    gradient: "from-red-500/20 via-red-500/10 to-transparent",
-    border: "border-red-500/30",
-    text: "text-red-400",
-    bg: "bg-red-500/10",
-    glow: "shadow-[0_0_30px_-5px_hsl(0,70%,50%/0.2)]",
-    barColor: "bg-red-500",
-  },
 };
 
 const ratingLabels: Record<string, string> = {
-  A: "A — Riesgo Bajo",
-  B: "B — Riesgo Medio",
-  C: "C — Riesgo Alto",
-  R: "Rechazado",
+  RIESGO_BAJO: "Riesgo Bajo",
+  RIESGO_MEDIO: "Riesgo Medio",
+  RIESGO_ALTO: "Riesgo Alto",
 };
 
 export function CreditStatusCard({ rating, score, label }: CreditStatusCardProps) {
@@ -73,9 +63,7 @@ export function CreditStatusCard({ rating, score, label }: CreditStatusCardProps
               Resultado del Diagnóstico
             </p>
             <h2 className={`text-2xl font-bold ${c.text}`}>{label}</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Calificación: <span className={`font-semibold ${c.text}`}>{ratingLabels[rating]}</span>
-            </p>
+
           </div>
 
           {/* Score */}

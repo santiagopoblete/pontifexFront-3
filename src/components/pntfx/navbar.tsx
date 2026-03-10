@@ -3,6 +3,7 @@ import { BarChart3, UserIcon } from "lucide-react";
 
 const NAV_ITEMS = [
   ["Procesador Financiero", "/ProcesadorFinanciero"],
+  ["Cargar MASTER", "/CargarMaster"],
   ["Empate de Clientes", "/EmpateDeClientes"],
   ["Diagnóstico Crediticio", "/DiagnosticoCrediticio"],
   ["Predictor de KPIs", "/PredictorKPI"],

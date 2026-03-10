@@ -84,7 +84,45 @@ export function matchClientToPartners(
 ): MatchResult[] {
   const solvencia = determineSolvencia(master);
 
-  return partners
+  // Treat requested coverage and desired product as hard filters:
+  // - Cobertura: jerárquica (nacional ≥ regional ≥ estatal ≥ local)
+  // - Producto: el partner debe ofrecer explícitamente el tipo solicitado.
+  const filteredPartners = (() => {
+    let base = partners;
+
+    if (profile.coberturaDeseada) {
+      const levelRank: Record<NonNullable<ClientProfile["coberturaDeseada"]>, number> = {
+        local: 1,
+        estatal: 2,
+        regional: 3,
+        nacional: 4,
+      };
+      const partnerRank = (p: CreditPartner): number => {
+        if (p.cobertura_nacional) return 4;
+        if (p.cobertura_regional) return 3;
+        if (p.cobertura_estatal) return 2;
+        if (p.cobertura_local) return 1;
+        return 0;
+      };
+      const required = levelRank[profile.coberturaDeseada];
+      base = base.filter((p) => partnerRank(p) >= required);
+    }
+
+    if (profile.productoDeseado) {
+      const prodMap: Record<string, keyof CreditPartner> = {
+        credito_simple: "credito_simple",
+        credito_revolvente: "credito_revolvente",
+        factoraje: "factoraje",
+        arrendamiento: "arrendamiento",
+      };
+      const field = prodMap[profile.productoDeseado];
+      base = base.filter((p) => p[field]);
+    }
+
+    return base;
+  })();
+
+  return filteredPartners
     .map((p) => {
       const matches: string[] = [];
       const mismatches: string[] = [];
@@ -115,9 +153,9 @@ export function matchClientToPartners(
         };
         if (p[sectorMap[profile.sector]] as boolean) {
           matchedCriteria++;
-          matches.push(`Sector ${profile.sector} aceptado`);
+          matches.push(`Sector ${profile.sector} favorecido`);
         } else {
-          mismatches.push(`Sector ${profile.sector} no aceptado`);
+          mismatches.push(`Sector ${profile.sector} no favorecido`);
         }
       }
 
@@ -147,9 +185,9 @@ export function matchClientToPartners(
         };
         if (p[buroMap[profile.nivelBuro]] as boolean) {
           matchedCriteria++;
-          matches.push(`Buró ${profile.nivelBuro} aceptado`);
+          matches.push(`Buró ${profile.nivelBuro} favorecido`);
         } else {
-          mismatches.push(`Buró ${profile.nivelBuro} no aceptado`);
+          mismatches.push(`Buró ${profile.nivelBuro} no favorecido`);
         }
       }
 
@@ -176,8 +214,9 @@ export function matchClientToPartners(
       }
 
       // 6. Cobertura
+      // Ya se aplica como filtro duro jerárquico arriba (filteredPartners),
+      // por lo que aquí no debe afectar el puntaje ni generar mismatches.
       if (profile.coberturaDeseada) {
-        totalCriteria++;
         const cobMap: Record<string, keyof CreditPartner> = {
           local: "cobertura_local",
           estatal: "cobertura_estatal",
@@ -185,10 +224,7 @@ export function matchClientToPartners(
           nacional: "cobertura_nacional",
         };
         if (p[cobMap[profile.coberturaDeseada]] as boolean) {
-          matchedCriteria++;
           matches.push(`Cobertura ${profile.coberturaDeseada} disponible`);
-        } else {
-          mismatches.push(`Cobertura ${profile.coberturaDeseada} no disponible`);
         }
       }
 

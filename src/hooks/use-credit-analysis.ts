@@ -14,9 +14,11 @@ const FALLBACK_DATA = {
   pasivoTotal: 229400,
   pasivoCirculante: 155000,
   capitalContable: 390600,
+  flujoEfectivo: 82000,
   cxcPromedio: 48500,
   ventasCredito: 220125,
   inventarioPromedio: 58000,
+  antiguedadAnios: 3,
 };
 
 function fromMaster(m: MasterDataset) {
@@ -32,10 +34,27 @@ function fromMaster(m: MasterDataset) {
     pasivoTotal: m.pasivoTotal,
     pasivoCirculante: m.pasivoCirculante,
     capitalContable: m.capitalContable,
+    // Simple proxy de flujo de efectivo operativo:
+    // utilidadNeta + depreciación (si la hay) como aproximación rápida.
+    flujoEfectivo: m.utilidadNeta + (m.depreciacion || 0),
     cxcPromedio: m.cuentasPorCobrar || 48500,
     ventasCredito: m.ventas * 0.75,
     inventarioPromedio: m.inventarios || 58000,
+    antiguedadAnios: estimateAntiguedadAnios(m),
   };
+}
+
+function estimateAntiguedadAnios(m: MasterDataset): number {
+  const periodo = m.periodo || "";
+  const match = periodo.match(/(\d{4}).*?(\d{4})/);
+  if (match) {
+    const y1 = Number(match[1]);
+    const y2 = Number(match[2]);
+    if (Number.isFinite(y1) && Number.isFinite(y2) && y2 >= y1) {
+      return Math.max(1, y2 - y1 + 1);
+    }
+  }
+  return 0;
 }
 
 function computeMetrics(d: typeof FALLBACK_DATA) {
@@ -50,10 +69,24 @@ function computeMetrics(d: typeof FALLBACK_DATA) {
     liquidity: [
       { key: "currentRatio", label: "Current Ratio", value: d.activoCirculante / d.pasivoCirculante, fmt: "x" as const, tooltip: "Activo Circulante / Pasivo Circulante" },
       { key: "acidTest", label: "Prueba Ácida", value: (d.activoCirculante - d.inventarios) / d.pasivoCirculante, fmt: "x" as const, tooltip: "(Activo Circulante − Inventarios) / Pasivo Circulante" },
+      {
+        key: "cashFlow",
+        label: "Flujo de Efectivo",
+        value: d.flujoEfectivo / d.ventas,
+        fmt: "pct" as const,
+        tooltip: "Flujo de efectivo operativo aproximado / Ventas",
+      },
     ],
     efficiency: [
       { key: "rotInv", label: "Rot. Inventarios", value: d.costoDeVentas / d.inventarioPromedio, fmt: "x" as const, tooltip: "Costo de Ventas / Inventario Promedio" },
       { key: "rotCxC", label: "Rot. CxC", value: d.ventasCredito / d.cxcPromedio, fmt: "x" as const, tooltip: "Ventas a Crédito / CxC Promedio" },
+      {
+        key: "antiguedad",
+        label: "Antigüedad (años)",
+        value: d.antiguedadAnios,
+        fmt: "x" as const,
+        tooltip: "Años estimados de operación de la empresa según el periodo del MASTER",
+      },
     ],
     leverage: [
       { key: "debtRatio", label: "Razón de Deuda", value: d.pasivoTotal / d.activosTotales, fmt: "pct" as const, tooltip: "Pasivo Total / Activo Total" },
@@ -62,47 +95,82 @@ function computeMetrics(d: typeof FALLBACK_DATA) {
   };
 }
 
-type Rating = "A" | "B" | "C" | "R";
+type Rating = "RIESGO_BAJO" | "RIESGO_MEDIO" | "RIESGO_ALTO";
 
-function computeScore(metrics: ReturnType<typeof computeMetrics>): { score: number; rating: Rating; label: string } {
+interface ScoreBreakdown {
+  rentabilidad: number;
+  liquidez: number;
+  eficiencia: number;
+  apalancamiento: number;
+  roe: number;
+}
+
+function computeScore(
+  metrics: ReturnType<typeof computeMetrics>,
+): { score: number; rating: Rating; label: string; breakdown: ScoreBreakdown } {
   let score = 0;
+  const breakdown: ScoreBreakdown = {
+    rentabilidad: 0,
+    liquidez: 0,
+    eficiencia: 0,
+    apalancamiento: 0,
+    roe: 0,
+  };
 
   const margenNeto = metrics.profitability[2].value;
-  if (margenNeto > 0.25) score += 30;
-  else if (margenNeto > 0.15) score += 24;
-  else if (margenNeto > 0.05) score += 15;
-  else score += 5;
+  if (margenNeto > 0.25) { score += 30; breakdown.rentabilidad += 30; }
+  else if (margenNeto > 0.15) { score += 24; breakdown.rentabilidad += 24; }
+  else if (margenNeto > 0.05) { score += 15; breakdown.rentabilidad += 15; }
+  else { score += 5; breakdown.rentabilidad += 5; }
 
   const roe = metrics.profitability[4].value;
-  if (roe > 0.2) score += 15;
-  else if (roe > 0.1) score += 10;
-  else score += 4;
+  if (roe > 0.2) { score += 15; breakdown.roe += 15; }
+  else if (roe > 0.1) { score += 10; breakdown.roe += 10; }
+  else { score += 4; breakdown.roe += 4; }
 
   const cr = metrics.liquidity[0].value;
-  if (cr > 2) score += 20;
-  else if (cr > 1.5) score += 16;
-  else if (cr > 1) score += 10;
-  else score += 3;
+  if (cr > 2) { score += 20; breakdown.liquidez += 20; }
+  else if (cr > 1.5) { score += 16; breakdown.liquidez += 16; }
+  else if (cr > 1) { score += 10; breakdown.liquidez += 10; }
+  else { score += 3; breakdown.liquidez += 3; }
+
+  // Flujo de efectivo (liquidez dinámica) – peso importante pero menor
+  const cashFlowMargin = metrics.liquidity[2]?.value ?? 0;
+  if (cashFlowMargin > 0.18) { score += 12; breakdown.liquidez += 12; }
+  else if (cashFlowMargin > 0.1) { score += 8; breakdown.liquidez += 8; }
+  else if (cashFlowMargin > 0.03) { score += 4; breakdown.liquidez += 4; }
+  else { score += 1; breakdown.liquidez += 1; }
 
   const dr = metrics.leverage[0].value;
-  if (dr < 0.3) score += 20;
-  else if (dr < 0.5) score += 15;
-  else if (dr < 0.7) score += 8;
-  else score += 2;
+  if (dr < 0.3) { score += 16; breakdown.apalancamiento += 16; }
+  else if (dr < 0.5) { score += 12; breakdown.apalancamiento += 12; }
+  else if (dr < 0.7) { score += 6; breakdown.apalancamiento += 6; }
+  else { score += 2; breakdown.apalancamiento += 2; }
+
+  // Deuda / Capital (debtEquity): apalancamiento adicional
+  const debtEquity = metrics.leverage[1]?.value ?? 0;
+  if (debtEquity < 0.8) { score += 6; breakdown.apalancamiento += 6; }
+  else if (debtEquity < 1.5) { score += 4; breakdown.apalancamiento += 4; }
+  else if (debtEquity < 2.5) { score += 2; breakdown.apalancamiento += 2; }
 
   const rotInv = metrics.efficiency[0].value;
-  if (rotInv > 4) score += 15;
-  else if (rotInv > 2) score += 10;
-  else score += 4;
+  if (rotInv > 4) { score += 15; breakdown.eficiencia += 15; }
+  else if (rotInv > 2) { score += 10; breakdown.eficiencia += 10; }
+  else { score += 4; breakdown.eficiencia += 4; }
+
+  const antiguedadMetric = metrics.efficiency.find((m) => m.key === "antiguedad");
+  const antiguedad = antiguedadMetric?.value ?? 0;
+  if (antiguedad >= 5) { score += 8; breakdown.eficiencia += 8; }
+  else if (antiguedad >= 2) { score += 5; breakdown.eficiencia += 5; }
+  else if (antiguedad > 0) { score += 2; breakdown.eficiencia += 2; }
 
   let rating: Rating;
   let label: string;
-  if (score >= 80) { rating = "A"; label = "APTO PARA CRÉDITO"; }
-  else if (score >= 60) { rating = "B"; label = "RIESGO MEDIO"; }
-  else if (score >= 40) { rating = "C"; label = "ALTO RIESGO"; }
-  else { rating = "R"; label = "NO APTO"; }
+  if (score >= 80) { rating = "RIESGO_BAJO"; label = "RIESGO BAJO"; }
+  else if (score >= 50) { rating = "RIESGO_MEDIO"; label = "RIESGO MEDIO"; }
+  else { rating = "RIESGO_ALTO"; label = "RIESGO ALTO"; }
 
-  return { score, rating, label };
+  return { score, rating, label, breakdown };
 }
 
 function generateDecision(rating: Rating, metrics: ReturnType<typeof computeMetrics>) {
@@ -115,6 +183,7 @@ function generateDecision(rating: Rating, metrics: ReturnType<typeof computeMetr
   const cr = metrics.liquidity[0].value;
   const dr = metrics.leverage[0].value;
   const rotInv = metrics.efficiency[0].value;
+  const cashFlowMargin = metrics.liquidity[2]?.value ?? 0;
 
   if (margenNeto > 0.2) strengths.push("Margen neto sólido que indica alta eficiencia operativa.");
   else if (margenNeto < 0.1) weaknesses.push("Margen neto bajo, lo que limita la capacidad de absorber pérdidas.");
@@ -124,6 +193,9 @@ function generateDecision(rating: Rating, metrics: ReturnType<typeof computeMetr
 
   if (cr > 1.5) strengths.push("Liquidez corriente adecuada para cubrir obligaciones a corto plazo.");
   else if (cr < 1) risks.push("Liquidez insuficiente: el activo circulante no cubre el pasivo circulante.");
+
+  if (cashFlowMargin > 0.15) strengths.push("Flujo de efectivo operativo saludable en relación con las ventas.");
+  else if (cashFlowMargin < 0.05) risks.push("Flujo de efectivo operativo limitado frente a las ventas, posible tensión de caja.");
 
   if (dr < 0.4) strengths.push("Nivel de endeudamiento conservador y manejable.");
   else if (dr > 0.6) risks.push("Alto nivel de apalancamiento aumenta la vulnerabilidad ante variaciones de tasa.");
@@ -136,10 +208,9 @@ function generateDecision(rating: Rating, metrics: ReturnType<typeof computeMetr
   if (risks.length === 0) risks.push("Riesgos financieros dentro de parámetros aceptables.");
 
   const recMap: Record<Rating, string> = {
-    A: "Se recomienda aprobar la línea de crédito. La empresa presenta indicadores financieros sólidos, con buena rentabilidad, liquidez adecuada y un nivel de endeudamiento controlado.",
-    B: "Se sugiere aprobar con condiciones. La empresa muestra indicadores aceptables pero con áreas de mejora. Se recomienda establecer garantías adicionales y monitoreo periódico.",
-    C: "Se recomienda precaución. Los indicadores financieros presentan debilidades que podrían comprometer la capacidad de pago. Considerar aprobación parcial con garantías sólidas.",
-    R: "No se recomienda otorgar crédito. Los indicadores financieros muestran un perfil de riesgo que excede los parámetros aceptables de la institución.",
+    RIESGO_BAJO: "Se recomienda aprobar la línea de crédito. La empresa presenta indicadores financieros sólidos, con buena rentabilidad, liquidez adecuada y un nivel de endeudamiento controlado.",
+    RIESGO_MEDIO: "Se sugiere aprobar con condiciones. La empresa muestra indicadores aceptables pero con áreas de mejora. Se recomienda establecer garantías adicionales y monitoreo periódico.",
+    RIESGO_ALTO: "Se recomienda precaución. Los indicadores financieros presentan debilidades que podrían comprometer la capacidad de pago. Considerar aprobación parcial con garantías sólidas o rechazar la operación.",
   };
 
   return { strengths, weaknesses, risks, recommendation: recMap[rating] };
@@ -152,7 +223,7 @@ export function useCreditAnalysis() {
     return {
       metrics: computeMetrics(FALLBACK_DATA),
       score: 0,
-      rating: "R" as Rating,
+      rating: "RIESGO_ALTO" as Rating,
       label: "SIN DATOS",
       strengths: [],
       weaknesses: [],
@@ -169,7 +240,7 @@ export function useCreditAnalysis() {
   const usingRealData = true;
 
   const metrics = computeMetrics(sourceData);
-  const { score, rating, label } = computeScore(metrics);
+  const { score, rating, label, breakdown } = computeScore(metrics);
   const { strengths, weaknesses, risks, recommendation } = generateDecision(rating, metrics);
 
   // Chart data: use MASTER monthly data if available, otherwise fallback
@@ -226,11 +297,31 @@ export function useCreditAnalysis() {
     usingRealData,
     empresa: master?.empresa || "Empresa (datos demo)",
     categories: [
-      { name: "Rentabilidad", score: rating === "A" ? 28 : rating === "B" ? 22 : 14, max: 30 },
-      { name: "Liquidez", score: rating === "A" ? 18 : rating === "B" ? 14 : 8, max: 20 },
-      { name: "Eficiencia", score: rating === "A" ? 13 : rating === "B" ? 9 : 5, max: 15 },
-      { name: "Apalancamiento", score: rating === "A" ? 17 : rating === "B" ? 12 : 6, max: 20 },
-      { name: "ROE", score: rating === "A" ? 14 : rating === "B" ? 10 : 5, max: 15 },
+      {
+        name: "Rentabilidad",
+        score: Math.round(breakdown.rentabilidad),
+        max: 30,
+      },
+      {
+        name: "Liquidez",
+        score: Math.round(breakdown.liquidez),
+        max: 32, // 20 (CR) + 12 (Flujo de efectivo)
+      },
+      {
+        name: "Eficiencia",
+        score: Math.round(breakdown.eficiencia),
+        max: 23, // 15 (Rot. Inv) + 8 (Antigüedad)
+      },
+      {
+        name: "Apalancamiento",
+        score: Math.round(breakdown.apalancamiento),
+        max: 20,
+      },
+      {
+        name: "ROE",
+        score: Math.round(breakdown.roe),
+        max: 15,
+      },
     ],
   };
 }
