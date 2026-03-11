@@ -210,46 +210,61 @@ export function useCreditAnalysis() {
   const { score, rating, label, breakdown } = computeScore(metrics);
   const { strengths, weaknesses, risks, recommendation } = generateDecision(rating, metrics);
 
-  // Chart data: use MASTER monthly data if available, otherwise fallback
-  const chartData = master ? {
-    revenueTrend: master.monthlyRevenue,
-    margins: master.monthlyMargins,
-    leverage: master.monthlyLeverage,
-    liquidity: master.monthlyLiquidity,
-  } : {
-    revenueTrend: [
-      { mes: "Ene", ingresos: 42000, gastos: 28000 },
-      { mes: "Feb", ingresos: 38500, gastos: 31000 },
-      { mes: "Mar", ingresos: 51000, gastos: 27500 },
-      { mes: "Abr", ingresos: 47800, gastos: 33000 },
-      { mes: "May", ingresos: 53200, gastos: 29800 },
-      { mes: "Jun", ingresos: 61000, gastos: 35400 },
-    ],
-    margins: [
-      { mes: "Ene", bruto: 0.40, operativo: 0.28, neto: 0.22 },
-      { mes: "Feb", bruto: 0.38, operativo: 0.25, neto: 0.19 },
-      { mes: "Mar", bruto: 0.46, operativo: 0.32, neto: 0.27 },
-      { mes: "Abr", bruto: 0.41, operativo: 0.29, neto: 0.23 },
-      { mes: "May", bruto: 0.44, operativo: 0.31, neto: 0.26 },
-      { mes: "Jun", bruto: 0.42, operativo: 0.30, neto: 0.25 },
-    ],
-    leverage: [
-      { mes: "Ene", deuda: 0.40, deudaCapital: 0.67 },
-      { mes: "Feb", deuda: 0.39, deudaCapital: 0.64 },
-      { mes: "Mar", deuda: 0.37, deudaCapital: 0.59 },
-      { mes: "Abr", deuda: 0.38, deudaCapital: 0.61 },
-      { mes: "May", deuda: 0.37, deudaCapital: 0.59 },
-      { mes: "Jun", deuda: 0.37, deudaCapital: 0.59 },
-    ],
-    liquidity: [
-      { mes: "Ene", current: 1.45, acid: 1.05 },
-      { mes: "Feb", current: 1.50, acid: 1.10 },
-      { mes: "Mar", current: 1.55, acid: 1.12 },
-      { mes: "Abr", current: 1.52, acid: 1.08 },
-      { mes: "May", current: 1.58, acid: 1.15 },
-      { mes: "Jun", current: 1.60, acid: 1.20 },
-    ],
-  };
+  // Chart data: prefer yearly (one point per period) when we only have annual data; otherwise use monthly
+  const hasRealMonthly =
+    master.monthlyRevenue.length > 0 &&
+    master.monthlyRevenue.some((r) => /^\d{4}$/.test(String(r.mes).trim()));
+  const periodLabel =
+    master.periodo?.trim() ||
+    (master.periodo?.match(/\d{4}/)?.[0]) ||
+    new Date().getFullYear().toString();
+  const chartData = master
+    ? hasRealMonthly
+      ? {
+          revenueTrend: master.monthlyRevenue,
+          margins: master.monthlyMargins,
+          leverage: master.monthlyLeverage,
+          liquidity: master.monthlyLiquidity,
+        }
+      : {
+          revenueTrend: [
+            {
+              mes: periodLabel,
+              ingresos: master.ventas,
+              gastos: master.costoDeVentas + master.gastosOperativos,
+            },
+          ],
+          margins: [
+            {
+              mes: periodLabel,
+              bruto: master.margenBruto,
+              operativo: master.margenOperativo,
+              neto: master.margenNeto,
+            },
+          ],
+          leverage: [
+            {
+              mes: periodLabel,
+              deuda: master.razonDeuda,
+              deudaCapital: master.capitalContable
+                ? master.pasivoTotal / master.capitalContable
+                : 0,
+            },
+          ],
+          liquidity: [
+            {
+              mes: periodLabel,
+              current: master.currentRatio,
+              acid: master.acidTest,
+            },
+          ],
+        }
+    : {
+        revenueTrend: [{ mes: "—", ingresos: 0, gastos: 0 }],
+        margins: [{ mes: "—", bruto: 0, operativo: 0, neto: 0 }],
+        leverage: [{ mes: "—", deuda: 0, deudaCapital: 0 }],
+        liquidity: [{ mes: "—", current: 0, acid: 0 }],
+      };
 
   return {
     metrics,
